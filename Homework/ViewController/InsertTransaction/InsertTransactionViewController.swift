@@ -11,7 +11,7 @@ class InsertTransactionViewController: UIViewController {
     private let disposedBag = DisposeBag()
     private lazy var inserTransationViewModel = {
         InserTransatioViewModel(InserTransationRepository(ApiService()),
-        disposedBag)
+                                disposedBag)
     }()
     
     private lazy var inserButton: UIButton = {
@@ -19,7 +19,6 @@ class InsertTransactionViewController: UIViewController {
         button.backgroundColor = .yellow
         button.setTitle("儲存", for: .normal)
         button.setTitleColor(.blue, for: .normal)
-        button.addTarget(self, action: #selector(insert(_ :)), for: .touchUpInside)
         return button
     }()
     private lazy var detailAddButton: UIButton = {
@@ -27,7 +26,6 @@ class InsertTransactionViewController: UIViewController {
         button.backgroundColor = .yellow
         button.setTitle("再加一筆", for: .normal)
         button.setTitleColor(.blue, for: .normal)
-        button.addTarget(self, action: #selector(detailAddItem(_:)), for: .touchUpInside)
         return button
     }()
     
@@ -94,7 +92,7 @@ class InsertTransactionViewController: UIViewController {
         textfeild.delegate = self
         textfeild.placeholder = "名稱"
         textfeild.borderStyle = UITextField.BorderStyle.roundedRect
-
+        
         return textfeild
     }()
     private lazy var detailQuantityTexfeild: UITextField = {
@@ -102,7 +100,7 @@ class InsertTransactionViewController: UIViewController {
         textfeild.delegate = self
         textfeild.placeholder = "數量"
         textfeild.borderStyle = UITextField.BorderStyle.roundedRect
-
+        textfeild.keyboardType = .numberPad
         return textfeild
     }()
     private lazy var detailPriceTexfeild: UITextField = {
@@ -110,7 +108,7 @@ class InsertTransactionViewController: UIViewController {
         textfeild.delegate = self
         textfeild.placeholder = "價格"
         textfeild.borderStyle = UITextField.BorderStyle.roundedRect
-        
+        textfeild.keyboardType = .numberPad
         return textfeild
     }()
     private lazy var detailHeaderView: UIView = {
@@ -126,10 +124,8 @@ class InsertTransactionViewController: UIViewController {
         }
         return view
     }()
-    private lazy var detailTableView: UITableView = {
+    private let detailTableView: UITableView = {
         let tableview = UITableView()
-        tableview.delegate = self
-        tableview.dataSource = self
         tableview.rowHeight = 120
         tableview.register(DetailInfoCell.self, forCellReuseIdentifier: DetailInfoCell.identifier)
         return tableview
@@ -137,7 +133,6 @@ class InsertTransactionViewController: UIViewController {
     
     private var labelArray: [UIView] = []
     private var textFeildArray: [UITextField] = []
-    private var detailDataArrayTmp: [DetailTransationParameter] = []
     
     init(_ delegate: TransactionListViewDelegate) {
         self.delegate = delegate
@@ -153,9 +148,27 @@ class InsertTransactionViewController: UIViewController {
         initView()
     }
     
+    deinit {
+        print("deinit")
+    }
+    
     private func initView() {
-        setUIarray()
         view.backgroundColor = .white
+        
+        setUIarray()
+        addView()
+        
+        labelLayoutSet(self.labelArray)
+        textFieldLayoutSet(self.textFeildArray)
+        buttonLayoutSet()
+        anotherUILayouSet()
+        
+        buttonBindSet()
+        tableviewBindSet()
+        
+    }
+    
+    private func addView() {
         view.addSubview(inserButton)
         view.addSubview(detailAddButton)
         view.addSubview(detailHeaderView)
@@ -167,13 +180,29 @@ class InsertTransactionViewController: UIViewController {
         for textfield in textFeildArray {
             view.addSubview(textfield)
         }
-        labelLayoutSet(self.labelArray)
-        textFieldLayoutSet(self.textFeildArray)
-        buttonLayoutSet()
-        anotherUILayouSet()
+    }
+    
+    private func tableviewBindSet() {
         
-
-
+        detailTableView.rx.setDelegate(self).disposed(by: disposedBag)
+        
+        inserTransationViewModel.detailParametersSubject.bind(to: detailTableView.rx.items(cellIdentifier: DetailInfoCell.identifier, cellType: DetailInfoCell.self)) { row, datas, cell in
+            
+            cell.setValue(datas: datas)
+            
+        }.disposed(by: disposedBag)
+    }
+    
+    private func buttonBindSet() {
+        inserButton.rx.tap.subscribe(onNext: { [weak self] in
+            self?.insertData()
+        }).disposed(by: disposedBag)
+        
+        
+        detailAddButton.rx.tap.subscribe(onNext: { [weak self] in
+            self?.detailDataAdd()
+        }).disposed(by: disposedBag)
+        
     }
     
     private func setUIarray() {
@@ -261,49 +290,66 @@ class InsertTransactionViewController: UIViewController {
         }
     }
     
-    @objc func insert(_ sender: UIButton) {
+    private func insertData() {
+        var detailparameters: [DetailTransationParameter] = []
         let currentTime = dateToTime(date: self.dateTexfeild.text ?? "")
+        do {
+            detailparameters = try inserTransationViewModel.detailParametersSubject.value()
+        } catch {
+            
+        }
         
         let parameters: InsertTransationParameter = InsertTransationParameter(currentTime,
-                                                                        self.titleTexfeild.text ?? "",
-                                                                        self.infoTexfeild.text ?? "",
-                                                                        self.detailDataArrayTmp)
-                                                            
+                                                                              self.titleTexfeild.text ?? "",
+                                                                              self.infoTexfeild.text ?? "",
+                                                                              detailparameters)
+        
         
         inserTransationViewModel.inserData(parameter: parameters).subscribe { [weak self] status in
             switch status {
-
+                
             case .loadstart:
                 self?.hud.show(animated: true)
             case .loadEnd:
                 self?.hud.hide(animated: true)
-                self?.dismiss(animated: true, completion: nil)
+                self?.showAlert(message: "儲存成功")
             case .succes:
                 self?.delegate?.reloadApi()
                 
             case .error(errorMessage: let errorMessage):
-                print(errorMessage)
+                self?.showAlert(message: errorMessage.description)
             }
-        } onError: { error in
-            print(error)
+        } onError: { [weak self] error in
+            self?.showAlert(message: error.localizedDescription)
         }.disposed(by: disposedBag)
         
     }
     
-    @objc func detailAddItem(_ sender: UIButton) {
+    private func showAlert(message: String) {
+        let controller = UIAlertController(title: "提示", message: message, preferredStyle: .alert)
+        let okaction = UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            self?.dismiss(animated: true, completion: nil)
+        }
+        controller.addAction(okaction)
+        present(controller, animated: true, completion: nil)
+    }
+    
+    private func detailDataAdd() {
         let title = self.detailNameTexfeild.text ?? ""
         let quatity = Int(self.detailQuantityTexfeild.text ?? "") ?? 0
         let price = Int(self.detailPriceTexfeild.text ?? "") ?? 0
-        self.detailDataArrayTmp.append(DetailTransationParameter(title,
-                                                                 quatity,
-                                                                 price))
         
-        inserTransationViewModel.detaildatatmpObserverble.onNext([])
+        do {
+            var data = try inserTransationViewModel.detailParametersSubject.value()
+            data.append(DetailTransationParameter(title, quatity, price))
+            inserTransationViewModel.detailParametersSubject.onNext(data)
+        } catch {
+            
+        }
         
         self.detailNameTexfeild.text = ""
         self.detailQuantityTexfeild.text = ""
         self.detailPriceTexfeild.text = ""
-        self.detailTableView.reloadData()
     }
     
     private func dateToTime(date: String) -> Int {
@@ -322,23 +368,17 @@ class InsertTransactionViewController: UIViewController {
 extension InsertTransactionViewController: UITextFieldDelegate {
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-          textField.resignFirstResponder()
-          return true
+        textField.resignFirstResponder()
+        return true
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        self.view.endEditing(true)
     }
 }
 
 
-extension InsertTransactionViewController: UITableViewDelegate, UITableViewDataSource {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return self.detailDataArrayTmp.count
-    }
+extension InsertTransactionViewController: UITableViewDelegate {
     
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: "DetailInfoCell", for: indexPath) as? DetailInfoCell else {
-            return UITableViewCell()
-        }
-        cell.setValue(datas: detailDataArrayTmp[indexPath.row])
-        return cell
-    }
     
 }

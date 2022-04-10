@@ -16,18 +16,17 @@ class InserTransatioViewModel {
         case succes
         case error(errorMessage: AppError)
     }
-    
+    let detailParametersSubject = BehaviorSubject<[DetailTransationParameter]>(value: [])
+
     private let disposedBag: DisposeBag
-    private let inserTrasationRepository: InserTransationRepository
-    let dateObserverble = BehaviorSubject<String>(value: "")
-    let detaildatatmpObserverble = BehaviorSubject<[DetailTransationParameter]>(value: [])
+    private let inserTransationRepository: InserTransationRepository
     private let intserDataSubject = BehaviorSubject<InserTransatioViewModel.LoadingStatus>(value: .loadstart)
     
     
     init(_ inserttransationrepository: InserTransationRepository,
          _ disposeBag: DisposeBag) {
         
-        self.inserTrasationRepository = inserttransationrepository
+        self.inserTransationRepository = inserttransationrepository
         self.disposedBag = disposeBag
     }
     
@@ -35,7 +34,7 @@ class InserTransatioViewModel {
         
         self.intserDataSubject.onNext(.loadstart)
         
-        inserTrasationRepository
+        inserTransationRepository
             .inserTransationResult(parameter: parameter)
             .subscribe(onSuccess: { [weak self] status in
                 switch status {
